@@ -39,3 +39,6 @@ build-storybook.log
 
 # Prisma generated types
 **/prisma/index.ts
+.idea/codeStyles/codeStyleConfig.xml
+developer.bat
+pnpm-lock.yaml
