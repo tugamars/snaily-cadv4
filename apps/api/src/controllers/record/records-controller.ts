@@ -646,6 +646,7 @@ export class RecordsController {
     if (id) {
       const record = await prisma.record.findUnique({
         where: {
+			publishStatus: "PUBLISHED",
 			OR: [
 			  { id: id },
 			  { caseNumber: id },
@@ -660,7 +661,7 @@ export class RecordsController {
 			} } } },
 			officer: { include: {
 				
-				department: true,
+				department: { include: { value: true } },
 				citizen: { select: {
 					name: true,
 					surname: true,
@@ -676,7 +677,14 @@ export class RecordsController {
 				}
 				
 			} },
-		},
+			seizedItems: true,
+			violations: {
+				include: {
+				  penalCode: { include: { warningApplicable: true, warningNotApplicable: true } },
+				},
+			},
+			vehicle: { include: { model: { include: { value: true } } } }
+		 },
       });
 
       if (!record) {
@@ -719,16 +727,17 @@ export class RecordsController {
     // 2. Search/filter
     const records = await prisma.record.findMany({
       where: {
+		publishStatus: "PUBLISHED",
 		type: type as any,
         citizen: citizenWhere,
         officer: department
           ? {
               department: {
-                name: {
+                value: { value: {
                   contains: department,
                   mode: "insensitive",
                 },
-              },
+              }},
             }
           : undefined,
         createdAt: {
@@ -745,7 +754,7 @@ export class RecordsController {
 		} } } },
         officer: { include: {
 			
-			department: true,
+			department: { include: { value: true } },
 			citizen: { select: {
 				name: true,
 				surname: true,
@@ -761,6 +770,13 @@ export class RecordsController {
 			}
 			
 		} },
+		seizedItems: true,
+		violations: {
+			include: {
+			  penalCode: { include: { warningApplicable: true, warningNotApplicable: true } },
+			},
+		},
+		vehicle: { include: { model: { include: { value: true } } } }
       },
       orderBy: {
         createdAt: "desc",
