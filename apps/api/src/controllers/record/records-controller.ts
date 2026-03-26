@@ -6,7 +6,7 @@ import {
   CREATE_TICKET_SCHEMA_BUSINESS,
 } from "@snailycad/schemas";
 import { QueryParams, BodyParams, Context, PathParams } from "@tsed/platform-params";
-import { BadRequest, NotFound } from "@tsed/exceptions";
+import { BadRequest, NotFound, Forbidden } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
 import { UseBeforeEach, UseBefore } from "@tsed/platform-middlewares";
 import { ActiveOfficer } from "middlewares/active-officer";
@@ -31,6 +31,7 @@ import {
 import { validateSchema } from "lib/data/validate-schema";
 import { combinedUnitProperties, leoProperties } from "utils/leo/includes";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
+import { hasPermission } from "@snailycad/permissions";
 import { isFeatureEnabled } from "lib/upsert-cad";
 import { sendDiscordWebhook, sendRawWebhook } from "lib/discord/webhooks";
 import { getUserOfficerFromActiveOfficer, getInactivityFilter } from "lib/leo/utils";
@@ -518,13 +519,45 @@ export class RecordsController {
     @Context("cad") cad: { features?: Record<Feature, boolean> },
     @BodyParams() body: unknown,
     @PathParams("id") recordId: string,
+    @Context("user") user: User,
   ): Promise<APITypes.PutRecordsByIdData> {
     const data = validateSchema(CREATE_TICKET_SCHEMA.or(CREATE_TICKET_SCHEMA_BUSINESS), body);
+
+    const record = await prisma.record.findUnique({
+      where: { id: recordId },
+      include: { officer: true },
+    });
+
+    if (!record) {
+      throw new NotFound("recordNotFound");
+    }
+
+    const hasManageRecordsPermission = hasPermission({
+      userToCheck: user,
+      permissionsToCheck: [Permissions.ManageRecords],
+    });
+
+    const isOwner = record.officer?.userId === user.id;
+    const isManageable = hasManageRecordsPermission || isOwner;
+
+    if (!isManageable) {
+      throw new Forbidden("insufficientPermissions");
+    }
 
     const recordItem = await upsertRecord({
       data,
       cad,
       recordId,
+    });
+
+    await createAuditLogEntry({
+      prisma,
+      executorId: user.id,
+      action: {
+        type: AuditLogActionType.CitizenRecordUpdate,
+        previous: record as any,
+        new: recordItem as any,
+      },
     });
 
     return recordItem;
